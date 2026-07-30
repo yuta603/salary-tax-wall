@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6feb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="税金の壁">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.json">
+<title>収入・税金の壁トラッカー</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>収入・税金の壁トラッカー</h1>
+  <select id="year-select" aria-label="対象年"></select>
+</header>
+
+<main id="view-dashboard" class="view">
+  <div class="disclaimer">
+    ここに表示される壁の金額は、あなたが税務署に確認した数値をもとにした目安です。所得の内訳（給与とUber等の割合）が想定と大きく変わる場合は、必ず税務署に再確認してください。税務専門家によるアドバイスの代替ではありません。
+  </div>
+
+  <section class="wall-cards" id="wall-cards"></section>
+
+  <section class="card">
+    <h2>今年の月次収入（積み上げ）</h2>
+    <canvas id="chart-monthly" height="220"></canvas>
+    <div id="legend-monthly" class="legend"></div>
+  </section>
+
+  <section class="card">
+    <h2>累計収入の推移と壁</h2>
+    <canvas id="chart-cumulative" height="220"></canvas>
+  </section>
+
+  <section class="card">
+    <h2>前年比較</h2>
+    <canvas id="chart-yoy" height="220"></canvas>
+  </section>
+</main>
+
+<main id="view-entry" class="view hidden">
+  <section class="card">
+    <h2>収入源</h2>
+    <div id="source-list"></div>
+    <form id="source-form" class="hidden">
+      <label>名称（会社名・Uber Eatsなど）<input type="text" id="source-name" required></label>
+      <label>種類
+        <select id="source-type">
+          <option value="salary">給与所得</option>
+          <option value="misc">雑所得</option>
+        </select>
+      </label>
+      <label>グラフ表示色<input type="color" id="source-color" value="#1f6feb"></label>
+      <div style="display:flex; gap:8px;">
+        <button type="submit" class="btn primary">追加する</button>
+        <button type="button" id="cancel-source-btn" class="btn">キャンセル</button>
+      </div>
+    </form>
+    <button id="add-source-btn" class="btn">+ 収入源を追加</button>
+  </section>
+
+  <section class="card">
+    <h2>月次入力</h2>
+    <form id="entry-form">
+      <label>年<input type="number" id="entry-year" required></label>
+      <label>月<select id="entry-month" required></select></label>
+      <label>収入源<select id="entry-source" required></select></label>
+      <label id="expense-field">必要経費<input type="number" id="entry-expense" min="0" step="1"></label>
+      <label>収入額<input type="number" id="entry-income" min="0" step="1" required></label>
+      <button type="submit" class="btn primary">保存</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>入力履歴</h2>
+    <div id="entry-table"></div>
+  </section>
+</main>
+
+<main id="view-settings" class="view hidden">
+  <section class="card">
+    <h2>壁の設定</h2>
+    <form id="wall-form">
+      <label>雑所得（Uber等）単体の壁（円）<input type="number" id="wall-misc" min="0" step="1"></label>
+      <label>給与所得単体の壁（円）<input type="number" id="wall-salary" min="0" step="1"></label>
+      <label>合計所得の壁（円）<input type="number" id="wall-combined" min="0" step="1"></label>
+      <button type="submit" class="btn primary">保存</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>給与所得控除の設定</h2>
+    <p class="hint">給与収入から給与所得への換算に使う控除額です。2025年度税制改正後の最低保障額（65万円、年収190万円以下の場合）を初期値にしています。年収が190万円に近づく場合は国税庁の最新の速算表をご確認のうえ調整してください。</p>
+    <form id="deduction-form">
+      <label>給与所得控除額（円）<input type="number" id="deduction-flat" min="0" step="1"></label>
+      <label>この控除額が有効な給与収入の上限（円）<input type="number" id="deduction-ceiling" min="0" step="1"></label>
+      <button type="submit" class="btn primary">保存</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>データ管理</h2>
+    <button id="export-btn" class="btn">データをエクスポート</button>
+    <button id="import-btn" class="btn">データをインポート</button>
+    <input type="file" id="import-file" accept="application/json" class="hidden">
+    <button id="reset-btn" class="btn danger">全データを削除</button>
+  </section>
+</main>
+
+<nav class="tab-bar">
+  <button class="tab-btn active" data-view="dashboard">ダッシュボード</button>
+  <button class="tab-btn" data-view="entry">入力</button>
+  <button class="tab-btn" data-view="settings">設定</button>
+</nav>
+
+<script src="js/app.js"></script>
+</body>
+</html>
