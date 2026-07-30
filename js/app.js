@@ -3,12 +3,14 @@
 
   const STORAGE_KEY = "zeikin-kabe-data-v1";
   const MONTH_NAMES = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+  // 検証済みカテゴリカルパレット（dataviz skill: references/palette.md）固定順で割り当てる
+  const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 
   const DEFAULT_DATA = {
     version: 1,
     sources: [
-      { id: "salary-default", type: "salary", name: "給与（会社名を編集してください）", color: "#1f6feb" },
-      { id: "misc-default", type: "misc", name: "Uber Eats", color: "#2da44e" }
+      { id: "salary-default", type: "salary", name: "給与（会社名を編集してください）", color: PALETTE[0] },
+      { id: "misc-default", type: "misc", name: "Uber Eats", color: PALETTE[1] }
     ],
     entries: [],
     settings: {
@@ -171,39 +173,64 @@
     return Math.round(n).toLocaleString("ja-JP") + "円";
   }
 
-  function renderWallCards(summary) {
-    const walls = [
-      { label: "雑所得（Uber等）単体の壁", current: summary.miscIncome, projected: summary.projectedMiscIncome, threshold: state.settings.wallMiscYen },
-      { label: "給与所得単体の壁", current: summary.salaryIncome, projected: summary.projectedSalaryIncome, threshold: state.settings.wallSalaryIncomeYen },
-      { label: "合計所得の壁", current: summary.combined, projected: summary.projectedCombined, threshold: state.settings.wallCombinedYen }
-    ];
-    const container = document.getElementById("wall-cards");
-    container.innerHTML = walls.map(w => {
+  const WALL_DEFS = [
+    { key: "misc", label: "雑所得（Uber等）の壁", icon: "🛵", tint: "rgba(235,104,52,0.14)", iconColor: "#eb6834" },
+    { key: "salary", label: "給与所得の壁", icon: "💼", tint: "rgba(42,120,214,0.14)", iconColor: "#2a78d6" },
+    { key: "combined", label: "合計所得の壁", icon: "📊", tint: "rgba(74,58,167,0.14)", iconColor: "#4a3aa7" }
+  ];
+  const STATUS_LABEL = { ok: "◯ 余裕", warn: "△ 注意", danger: "⚠ 超過見込み" };
+
+  function wallsForSummary(summary) {
+    return [
+      { def: WALL_DEFS[0], current: summary.miscIncome, projected: summary.projectedMiscIncome, threshold: state.settings.wallMiscYen },
+      { def: WALL_DEFS[1], current: summary.salaryIncome, projected: summary.projectedSalaryIncome, threshold: state.settings.wallSalaryIncomeYen },
+      { def: WALL_DEFS[2], current: summary.combined, projected: summary.projectedCombined, threshold: state.settings.wallCombinedYen }
+    ].map(w => {
       const currentRatio = w.threshold > 0 ? w.current / w.threshold : 0;
       const projectedRatio = w.threshold > 0 ? w.projected / w.threshold : 0;
-      const status = statusForRatio(projectedRatio);
-      const barWidth = Math.min(100, currentRatio * 100);
-      let alertText = "";
-      if (status === "danger") alertText = "⚠ このペースだと壁を超える見込みです";
-      else if (status === "warn") alertText = "△ 壁の80%を超えています。ペース配分に注意してください";
-      else alertText = "◯ 余裕があります";
+      return Object.assign(w, { currentRatio, status: statusForRatio(projectedRatio) });
+    });
+  }
+
+  function renderWallRows(summary) {
+    const walls = wallsForSummary(summary);
+    const container = document.getElementById("wall-rows");
+    container.innerHTML = walls.map(w => {
+      const barWidth = Math.min(100, w.currentRatio * 100);
       return `
-        <div class="wall-card">
-          <div class="wall-title"><span>${w.label}</span><span>${(currentRatio*100).toFixed(1)}%</span></div>
-          <div class="wall-numbers">
-            <span>現在: ${yen(w.current)}</span>
-            <span>壁: ${yen(w.threshold)}</span>
+        <div class="wall-row">
+          <div class="avatar" style="background:${w.def.tint};">${w.def.icon}</div>
+          <div class="row-main">
+            <div class="row-title-line">
+              <span class="row-title">${w.def.label}</span>
+              <span class="badge ${w.status}">${STATUS_LABEL[w.status]}</span>
+            </div>
+            <div class="row-sub">${yen(w.current)} ／ ${yen(w.threshold)}（年末見込み ${yen(w.projected)}）</div>
+            <div class="progress-track"><div class="progress-fill ${w.status}" style="width:${barWidth}%"></div></div>
           </div>
-          <div class="progress-track"><div class="progress-fill ${status}" style="width:${barWidth}%"></div></div>
-          <div class="wall-numbers" style="margin-top:4px;">
-            <span>年末見込み: ${yen(w.projected)}</span>
-          </div>
-          <div class="wall-alert ${status}">${alertText}</div>
         </div>`;
     }).join("");
 
     if (summary.overCeiling) {
-      container.innerHTML += `<div class="disclaimer">給与収入が設定上の上限（${yen(state.settings.deductionCeiling)}）を超えました。給与所得控除額の前提が変わる可能性があるため、設定を見直すか国税庁の速算表を確認してください。</div>`;
+      container.innerHTML += `<div class="disclaimer" style="margin-top:10px;">給与収入が設定上の上限（${yen(state.settings.deductionCeiling)}）を超えました。給与所得控除額の前提が変わる可能性があるため、設定を見直すか国税庁の速算表を確認してください。</div>`;
+    }
+  }
+
+  function renderHero(summary) {
+    const hour = new Date().getHours();
+    const greeting = hour < 5 ? "こんばんは" : hour < 11 ? "おはようございます" : hour < 17 ? "こんにちは" : "こんばんは";
+    document.getElementById("hero-greeting").textContent = greeting;
+    document.getElementById("hero-amount").textContent = "¥" + Math.round(summary.combined).toLocaleString("ja-JP");
+
+    const walls = wallsForSummary(summary);
+    const closest = walls.reduce((a, b) => (b.currentRatio > a.currentRatio ? b : a));
+    const subEl = document.getElementById("hero-sub");
+    if (closest.status === "danger") {
+      subEl.textContent = `⚠ ${closest.def.label}を超える見込みです`;
+    } else if (closest.status === "warn") {
+      subEl.textContent = `△ ${closest.def.label}に近づいています（${Math.round(closest.currentRatio * 100)}%）`;
+    } else {
+      subEl.textContent = `◯ もっとも近い壁は${closest.def.label}（${Math.round(closest.currentRatio * 100)}%）`;
     }
   }
 
@@ -221,6 +248,25 @@
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
     return { ctx, width: cssWidth, height: cssHeight };
+  }
+
+  function fillRoundedTopRect(ctx, x, y, w, h, r) {
+    if (typeof ctx.roundRect === "function") {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, [r, r, 0, 0]);
+      ctx.fill();
+      return;
+    }
+    const rr = Math.min(r, w / 2, h);
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    ctx.lineTo(x, y + rr);
+    ctx.arcTo(x, y, x + rr, y, rr);
+    ctx.lineTo(x + w - rr, y);
+    ctx.arcTo(x + w, y, x + w, y + rr, rr);
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+    ctx.fill();
   }
 
   function niceMax(value) {
@@ -244,9 +290,10 @@
 
     const totals = categories.map((_, i) => series.reduce((sum, s) => sum + s.data[i], 0));
     const max = niceMax(Math.max(...totals, 1));
-    const textColor = getComputedStyle(document.body).getPropertyValue("--text-muted") || "#666";
+    const textColor = getComputedStyle(document.body).getPropertyValue("--ink-muted") || "#898781";
+    const gridColor = getComputedStyle(document.body).getPropertyValue("--grid") || "#e1e0d9";
 
-    ctx.strokeStyle = "#8884";
+    ctx.strokeStyle = gridColor;
     ctx.fillStyle = textColor;
     ctx.font = "10px sans-serif";
     ctx.textAlign = "right";
@@ -261,19 +308,28 @@
     }
 
     const barSlot = chartW / categories.length;
-    const barWidth = barSlot * 0.55;
+    const barWidth = barSlot * 0.5;
+    const segGap = 2;
     ctx.textAlign = "center";
     categories.forEach((cat, i) => {
       let yOffset = 0;
       const x = padL + barSlot * i + (barSlot - barWidth) / 2;
+      const visible = series.map(s => s.data[i]).filter(v => v > 0).length;
+      let segIndex = 0;
       series.forEach((s, si) => {
         const v = s.data[i];
         if (v <= 0) return;
-        const h = (v / max) * chartH;
+        const isTop = segIndex === visible - 1;
+        const h = Math.max(0, (v / max) * chartH - (visible > 1 ? segGap : 0));
         const y = padT + chartH - yOffset - h;
         ctx.fillStyle = colors[si];
-        ctx.fillRect(x, y, barWidth, h);
-        yOffset += h;
+        if (isTop) {
+          fillRoundedTopRect(ctx, x, y, barWidth, h, 4);
+        } else {
+          ctx.fillRect(x, y, barWidth, h);
+        }
+        yOffset += h + (visible > 1 ? segGap : 0);
+        segIndex++;
       });
       ctx.fillStyle = textColor;
       ctx.fillText(cat, x + barWidth / 2, padT + chartH + 14);
@@ -289,9 +345,10 @@
 
     const allValues = lines.flatMap(l => l.data).concat(thresholdLines.map(t => t.value));
     const max = niceMax(Math.max(...allValues, 1));
-    const textColor = getComputedStyle(document.body).getPropertyValue("--text-muted") || "#666";
+    const textColor = getComputedStyle(document.body).getPropertyValue("--ink-muted") || "#898781";
+    const gridColor = getComputedStyle(document.body).getPropertyValue("--grid") || "#e1e0d9";
 
-    ctx.strokeStyle = "#8884";
+    ctx.strokeStyle = gridColor;
     ctx.fillStyle = textColor;
     ctx.font = "10px sans-serif";
     ctx.textAlign = "right";
@@ -325,6 +382,8 @@
     lines.forEach(l => {
       ctx.strokeStyle = l.color;
       ctx.lineWidth = 2;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
       ctx.beginPath();
       l.data.forEach((v, i) => {
         const x = padL + xStep * i;
@@ -350,9 +409,10 @@
     const chartW = width - padL - padR;
     const chartH = height - padT - padB;
     const max = niceMax(Math.max(...seriesA, ...seriesB, 1));
-    const textColor = getComputedStyle(document.body).getPropertyValue("--text-muted") || "#666";
+    const textColor = getComputedStyle(document.body).getPropertyValue("--ink-muted") || "#898781";
+    const gridColor = getComputedStyle(document.body).getPropertyValue("--grid") || "#e1e0d9";
 
-    ctx.strokeStyle = "#8884";
+    ctx.strokeStyle = gridColor;
     ctx.fillStyle = textColor;
     ctx.font = "10px sans-serif";
     ctx.textAlign = "right";
@@ -367,16 +427,16 @@
     }
 
     const barSlot = chartW / categories.length;
-    const barWidth = barSlot * 0.32;
+    const barWidth = barSlot * 0.3;
     ctx.textAlign = "center";
     categories.forEach((cat, i) => {
-      const xBase = padL + barSlot * i + barSlot * 0.18;
-      const hA = (seriesA[i] / max) * chartH;
-      const hB = (seriesB[i] / max) * chartH;
+      const xBase = padL + barSlot * i + barSlot * 0.2;
+      const hA = Math.max(0, (seriesA[i] / max) * chartH);
+      const hB = Math.max(0, (seriesB[i] / max) * chartH);
       ctx.fillStyle = colorA;
-      ctx.fillRect(xBase, padT + chartH - hA, barWidth, hA);
+      fillRoundedTopRect(ctx, xBase, padT + chartH - hA, barWidth, hA, 3);
       ctx.fillStyle = colorB;
-      ctx.fillRect(xBase + barWidth + 3, padT + chartH - hB, barWidth, hB);
+      fillRoundedTopRect(ctx, xBase + barWidth + 3, padT + chartH - hB, barWidth, hB, 3);
       ctx.fillStyle = textColor;
       ctx.fillText(cat, xBase + barWidth + 1.5, padT + chartH + 14);
     });
@@ -397,7 +457,8 @@
 
   function renderDashboard() {
     const summary = yearSummary(currentYear);
-    renderWallCards(summary);
+    renderHero(summary);
+    renderWallRows(summary);
 
     const monthly = monthlyTotalsBySource(currentYear);
     const series = state.sources.map(s => ({ data: monthly[s.id] }));
@@ -409,18 +470,21 @@
       `<span class="legend-item"><span class="legend-swatch" style="background:${s.color}"></span>${s.name || "(未設定)"}</span>`
     ).join("");
 
+    const accent = (getComputedStyle(document.body).getPropertyValue("--accent") || "#2a78d6").trim();
+    const mutedIcon = (getComputedStyle(document.body).getPropertyValue("--ink-muted") || "#898781").trim();
+
     drawLineChart(
       document.getElementById("chart-cumulative"),
       MONTH_NAMES,
       [
-        { data: summary.salaryIncomeCumSeries, color: "#1f6feb" },
-        { data: summary.miscIncomeCumSeries, color: "#2da44e" },
-        { data: summary.combinedCumSeries, color: "#8250df" }
+        { data: summary.salaryIncomeCumSeries, color: PALETTE[0] },
+        { data: summary.miscIncomeCumSeries, color: PALETTE[1] },
+        { data: summary.combinedCumSeries, color: PALETTE[6] }
       ],
       [
-        { value: state.settings.wallSalaryIncomeYen, color: "#1f6feb", label: "給与所得の壁" },
-        { value: state.settings.wallMiscYen, color: "#2da44e", label: "雑所得の壁" },
-        { value: state.settings.wallCombinedYen, color: "#8250df", label: "合計の壁" }
+        { value: state.settings.wallSalaryIncomeYen, color: PALETTE[0], label: "給与所得の壁" },
+        { value: state.settings.wallMiscYen, color: PALETTE[1], label: "雑所得の壁" },
+        { value: state.settings.wallCombinedYen, color: PALETTE[6], label: "合計の壁" }
       ]
     );
 
@@ -438,7 +502,7 @@
       combinedMonthly(lastYearMonthly),
       combinedMonthly(thisYearMonthly),
       `${lastYear}年`, `${currentYear}年`,
-      "#9aa7b2", "#1f6feb"
+      mutedIcon, accent
     );
   }
 
@@ -467,7 +531,7 @@
     const list = document.getElementById("source-list");
     list.innerHTML = state.sources.map(s => `
       <div class="source-row">
-        <span class="swatch" style="background:${s.color}"></span>
+        <span class="swatch" style="background:${s.color}">${(s.name || "?").trim().charAt(0)}</span>
         <span class="name">${s.name || "(未設定)"}</span>
         <span class="type-badge">${s.type === "salary" ? "給与" : "雑所得"}</span>
         <button data-id="${s.id}" class="delete-source-btn">削除</button>
@@ -488,6 +552,7 @@
   }
 
   document.getElementById("add-source-btn").addEventListener("click", () => {
+    document.getElementById("source-color").value = PALETTE[state.sources.length % PALETTE.length];
     document.getElementById("source-form").classList.remove("hidden");
   });
   document.getElementById("cancel-source-btn").addEventListener("click", () => {

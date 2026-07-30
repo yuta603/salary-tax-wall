@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1f6feb">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="税金の壁">
@@ -14,32 +15,42 @@
 </head>
 <body>
 
-<header class="app-header">
-  <h1>収入・税金の壁トラッカー</h1>
-  <select id="year-select" aria-label="対象年"></select>
+<header class="topbar">
+  <span class="topbar-title">税金の壁</span>
+  <select id="year-select" class="year-pill" aria-label="対象年"></select>
 </header>
 
 <main id="view-dashboard" class="view">
+  <section class="hero">
+    <div class="hero-greeting" id="hero-greeting">こんにちは</div>
+    <div class="hero-label">今年の合計所得</div>
+    <div class="hero-amount" id="hero-amount">¥0</div>
+    <div class="hero-sub" id="hero-sub"></div>
+  </section>
+
   <div class="disclaimer">
     ここに表示される壁の金額は、あなたが税務署に確認した数値をもとにした目安です。所得の内訳（給与とUber等の割合）が想定と大きく変わる場合は、必ず税務署に再確認してください。税務専門家によるアドバイスの代替ではありません。
   </div>
 
-  <section class="wall-cards" id="wall-cards"></section>
+  <section class="card wall-summary-card">
+    <div class="card-header"><h2>壁の状況</h2></div>
+    <div id="wall-rows"></div>
+  </section>
 
   <section class="card">
-    <h2>今年の月次収入（積み上げ）</h2>
-    <canvas id="chart-monthly" height="220"></canvas>
+    <div class="card-header"><h2>今年の月次収入</h2></div>
+    <canvas id="chart-monthly" height="200"></canvas>
     <div id="legend-monthly" class="legend"></div>
   </section>
 
   <section class="card">
-    <h2>累計収入の推移と壁</h2>
-    <canvas id="chart-cumulative" height="220"></canvas>
+    <div class="card-header"><h2>累計収入の推移と壁</h2></div>
+    <canvas id="chart-cumulative" height="200"></canvas>
   </section>
 
   <section class="card">
-    <h2>前年比較</h2>
-    <canvas id="chart-yoy" height="220"></canvas>
+    <div class="card-header"><h2>前年比較</h2></div>
+    <canvas id="chart-yoy" height="200"></canvas>
   </section>
 </main>
 
@@ -55,7 +66,7 @@
           <option value="misc">雑所得</option>
         </select>
       </label>
-      <label>グラフ表示色<input type="color" id="source-color" value="#1f6feb"></label>
+      <label>グラフ表示色<input type="color" id="source-color" value="#2a78d6"></label>
       <div style="display:flex; gap:8px;">
         <button type="submit" class="btn primary">追加する</button>
         <button type="button" id="cancel-source-btn" class="btn">キャンセル</button>
@@ -113,9 +124,9 @@
 </main>
 
 <nav class="tab-bar">
-  <button class="tab-btn active" data-view="dashboard">ダッシュボード</button>
-  <button class="tab-btn" data-view="entry">入力</button>
-  <button class="tab-btn" data-view="settings">設定</button>
+  <button class="tab-btn active" data-view="dashboard"><span class="tab-icon">📊</span><span>ダッシュボード</span></button>
+  <button class="tab-btn" data-view="entry"><span class="tab-icon">✏️</span><span>入力</span></button>
+  <button class="tab-btn" data-view="settings"><span class="tab-icon">⚙️</span><span>設定</span></button>
 </nav>
 
 <script src="js/app.js"></script>
