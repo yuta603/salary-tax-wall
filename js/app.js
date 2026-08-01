@@ -1017,7 +1017,12 @@
     if (currentUser) {
       fbAuth.signOut();
     } else {
-      fbAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+      fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(err => {
+        console.error("サインインに失敗しました", err);
+        if (err && err.code !== "auth/popup-closed-by-user" && err.code !== "auth/cancelled-popup-request") {
+          alert("ログインに失敗しました: " + err.message);
+        }
+      });
     }
   }
 
@@ -1025,7 +1030,6 @@
   document.getElementById("settings-auth-btn").addEventListener("click", toggleAuth);
 
   if (cloudEnabled) {
-    fbAuth.getRedirectResult().catch(err => console.error("サインインに失敗しました", err));
     fbAuth.onAuthStateChanged(user => {
       if (user) startCloudSync(user); else stopCloudSync();
     });

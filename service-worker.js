@@ -1,4 +1,4 @@
-const CACHE_NAME = "zeikin-kabe-v4";
+const CACHE_NAME = "zeikin-kabe-v5";
 const PRECACHE_URLS = [
   "./",
   "./index.html",
