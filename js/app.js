@@ -919,6 +919,16 @@
   let unsubscribeSnapshot = null;
   let lastPushedUpdatedAt = 0;
   let pushTimer = null;
+  let syncOpCount = 0;
+
+  function beginSyncOp() {
+    syncOpCount++;
+    updateSyncUI();
+  }
+  function endSyncOp() {
+    syncOpCount = Math.max(0, syncOpCount - 1);
+    updateSyncUI();
+  }
 
   function userDocRef(uid) {
     return fbDb.collection("users").doc(uid);
@@ -931,6 +941,7 @@
       const uid = currentUser.uid;
       const ref = userDocRef(uid);
       const localSnapshot = state;
+      beginSyncOp();
       // 書き込む直前にサーバー側の最新値を読み直し、こちらの方が新しい場合だけ上書きする
       // （2端末がほぼ同時に初回ログインした場合の上書き競合を防ぐ）
       fbDb.runTransaction(tx => tx.get(ref).then(doc => {
@@ -948,7 +959,7 @@
         }
       }).catch(err => {
         console.error("クラウドへの保存に失敗しました", err);
-      });
+      }).finally(() => endSyncOp());
     }, 800);
   }
 
@@ -976,6 +987,7 @@
   function startCloudSync(user) {
     currentUser = user;
     updateSyncUI();
+    beginSyncOp();
     userDocRef(user.uid).get().then(snap => {
       if (snap.exists) {
         const remote = snap.data();
@@ -991,7 +1003,7 @@
     }).catch(err => {
       console.error("初回同期に失敗しました", err);
       subscribeSnapshot(user);
-    });
+    }).finally(() => endSyncOp());
   }
 
   function stopCloudSync() {
@@ -1017,10 +1029,13 @@
     settingsAuthBtn.classList.remove("hidden");
     if (currentUser) {
       const label = currentUser.displayName || currentUser.email || "ログイン中";
-      authBtn.textContent = "☁ " + label;
+      const busy = syncOpCount > 0;
+      authBtn.textContent = (busy ? "🔄 " : "☁ ") + label;
       settingsAuthBtn.textContent = "ログアウト";
-      accountInfo.textContent = `${currentUser.email} で同期しています。`;
-      heroSync.textContent = "☁ 同期中";
+      accountInfo.textContent = busy
+        ? `${currentUser.email} と同期しています…`
+        : `${currentUser.email} と同期済みです。`;
+      heroSync.textContent = busy ? "🔄 同期しています…" : "☁ 同期済み";
     } else {
       authBtn.textContent = "ログイン";
       settingsAuthBtn.textContent = "Googleでログイン";
