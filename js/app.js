@@ -934,6 +934,20 @@
     return fbDb.collection("users").doc(uid);
   }
 
+  function hasRealData(s) {
+    return !!(s && Array.isArray(s.entries) && s.entries.length > 0);
+  }
+
+  // リモートの方が「データを持っている」のに自分が空なら、updatedAtの大小に関わらずリモートを優先する。
+  // （端末Aの空の初期状態が、たまたま新しいupdatedAtを持ってしまった場合に、
+  //   端末Bの本物のデータを未来永劫上書きし続けるのを防ぐための安全策）
+  function remoteWins(remote, local) {
+    if (!remote) return false;
+    if (hasRealData(remote) && !hasRealData(local)) return true;
+    if (!hasRealData(remote) && hasRealData(local)) return false;
+    return (remote.updatedAt || 0) > (local.updatedAt || 0);
+  }
+
   function pushToCloud() {
     if (!cloudEnabled || !currentUser) return;
     clearTimeout(pushTimer);
@@ -946,14 +960,14 @@
       // （2端末がほぼ同時に初回ログインした場合の上書き競合を防ぐ）
       fbDb.runTransaction(tx => tx.get(ref).then(doc => {
         const remote = doc.exists ? doc.data() : null;
-        if (remote && (remote.updatedAt || 0) > (localSnapshot.updatedAt || 0)) {
+        if (remote && remoteWins(remote, localSnapshot)) {
           return { skipped: true, remote };
         }
         tx.set(ref, localSnapshot);
         return { skipped: false };
       })).then(result => {
         if (result.skipped) {
-          if ((result.remote.updatedAt || 0) > (state.updatedAt || 0)) adoptRemoteState(result.remote);
+          if (remoteWins(result.remote, state)) adoptRemoteState(result.remote);
         } else {
           lastPushedUpdatedAt = localSnapshot.updatedAt;
         }
@@ -980,7 +994,7 @@
       if (snap.metadata.hasPendingWrites || !snap.exists) return;
       const remote = snap.data();
       if ((remote.updatedAt || 0) === lastPushedUpdatedAt) return;
-      if ((remote.updatedAt || 0) > (state.updatedAt || 0)) adoptRemoteState(remote);
+      if (remoteWins(remote, state)) adoptRemoteState(remote);
     }, err => console.error("同期の監視に失敗しました", err));
   }
 
@@ -991,7 +1005,7 @@
     userDocRef(user.uid).get().then(snap => {
       if (snap.exists) {
         const remote = snap.data();
-        if ((remote.updatedAt || 0) > (state.updatedAt || 0)) {
+        if (remoteWins(remote, state)) {
           adoptRemoteState(remote);
         } else {
           pushToCloud();
