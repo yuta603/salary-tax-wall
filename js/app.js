@@ -591,45 +591,106 @@
       <table>
         <thead><tr><th>月</th><th>収入源</th><th>収入</th><th>経費</th><th>純額</th><th></th></tr></thead>
         <tbody>
-          ${rows.map(({ e, src }) => `
+          ${rows.map(({ e, src }) => {
+            let expenseCell = "-";
+            if (src.type === "misc") {
+              expenseCell = e.expense ? yen(e.expense) : `<span class="hint" style="margin:0;">未入力</span>`;
+            }
+            return `
             <tr>
               <td>${MONTH_NAMES[e.month - 1]}</td>
               <td>${src.name}</td>
               <td>${yen(e.income)}</td>
-              <td>${e.expense ? yen(e.expense) : "-"}</td>
+              <td>${expenseCell}</td>
               <td>${yen(e.income - (e.expense || 0))}</td>
-              <td><button data-id="${e.id}" class="delete-entry-btn">削除</button></td>
-            </tr>
-          `).join("")}
+              <td>
+                <button data-id="${e.id}" class="edit-entry-btn">編集</button>
+                <button data-id="${e.id}" class="delete-entry-btn">削除</button>
+              </td>
+            </tr>`;
+          }).join("")}
         </tbody>
       </table>
     `;
     document.querySelectorAll(".delete-entry-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         state.entries = state.entries.filter(e => e.id !== btn.dataset.id);
+        if (editingEntryId === btn.dataset.id) cancelEntryEdit();
         saveData();
         renderEntryTable();
       });
     });
+    document.querySelectorAll(".edit-entry-btn").forEach(btn => {
+      btn.addEventListener("click", () => startEntryEdit(btn.dataset.id));
+    });
   }
 
-  document.getElementById("entry-form").addEventListener("submit", (ev) => {
+  // ---------- 月次入力フォーム（新規追加 / 既存編集の両方を扱う） ----------
+
+  let editingEntryId = null;
+  const entryForm = document.getElementById("entry-form");
+  const entrySubmitBtn = document.getElementById("entry-submit-btn");
+  const entryCancelBtn = document.getElementById("entry-cancel-btn");
+  const entryFormTitle = document.getElementById("entry-form-title");
+
+  function startEntryEdit(entryId) {
+    const entry = state.entries.find(e => e.id === entryId);
+    if (!entry) return;
+    editingEntryId = entryId;
+    document.getElementById("entry-year").value = entry.year;
+    monthSelect.value = String(entry.month);
+    entrySourceSelect.value = entry.sourceId;
+    toggleExpenseField();
+    document.getElementById("entry-income").value = entry.income;
+    document.getElementById("entry-expense").value = entry.expense || "";
+    entrySubmitBtn.textContent = "更新する";
+    entryFormTitle.textContent = "月次入力（編集中）";
+    entryCancelBtn.classList.remove("hidden");
+    entryForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelEntryEdit() {
+    editingEntryId = null;
+    entryForm.reset();
+    document.getElementById("entry-year").value = currentYear;
+    toggleExpenseField();
+    entrySubmitBtn.textContent = "保存";
+    entryFormTitle.textContent = "月次入力";
+    entryCancelBtn.classList.add("hidden");
+  }
+
+  entryCancelBtn.addEventListener("click", cancelEntryEdit);
+
+  entryForm.addEventListener("submit", (ev) => {
     ev.preventDefault();
     const year = Number(document.getElementById("entry-year").value);
     const month = Number(document.getElementById("entry-month").value);
     const sourceId = entrySourceSelect.value;
     const income = Number(document.getElementById("entry-income").value);
     const src = sourceById(sourceId);
-    const expense = src && src.type === "misc" ? Number(document.getElementById("entry-expense").value || 0) : 0;
+    const expenseRaw = document.getElementById("entry-expense").value;
+    const expense = src && src.type === "misc" && expenseRaw !== "" ? Number(expenseRaw) : 0;
 
-    const existing = state.entries.find(e => e.year === year && e.month === month && e.sourceId === sourceId);
-    if (existing) {
-      existing.income = income;
-      existing.expense = expense;
+    if (editingEntryId) {
+      const entry = state.entries.find(e => e.id === editingEntryId);
+      if (entry) {
+        entry.year = year;
+        entry.month = month;
+        entry.sourceId = sourceId;
+        entry.income = income;
+        entry.expense = expense;
+      }
     } else {
-      state.entries.push({ id: uid(), year, month, sourceId, income, expense });
+      const existing = state.entries.find(e => e.year === year && e.month === month && e.sourceId === sourceId);
+      if (existing) {
+        existing.income = income;
+        existing.expense = expense;
+      } else {
+        state.entries.push({ id: uid(), year, month, sourceId, income, expense });
+      }
     }
     saveData();
+    cancelEntryEdit();
     if (year === currentYear) renderEntryTable();
     renderYearSelect();
   });

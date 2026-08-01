@@ -76,14 +76,18 @@
   </section>
 
   <section class="card">
-    <h2>月次入力</h2>
+    <h2 id="entry-form-title">月次入力</h2>
+    <p class="hint">収入額だけ先に入力しておき、必要経費は後から入力履歴の「編集」ボタンで追記できます。</p>
     <form id="entry-form">
       <label>年<input type="number" id="entry-year" required></label>
       <label>月<select id="entry-month" required></select></label>
       <label>収入源<select id="entry-source" required></select></label>
-      <label id="expense-field">必要経費<input type="number" id="entry-expense" min="0" step="1"></label>
       <label>収入額<input type="number" id="entry-income" min="0" step="1" required></label>
-      <button type="submit" class="btn primary">保存</button>
+      <label id="expense-field">必要経費（わかる場合のみ）<input type="number" id="entry-expense" min="0" step="1" placeholder="未計算なら空欄でOK"></label>
+      <div style="display:flex; gap:8px;">
+        <button type="submit" id="entry-submit-btn" class="btn primary">保存</button>
+        <button type="button" id="entry-cancel-btn" class="btn hidden">編集をキャンセル</button>
+      </div>
     </form>
   </section>
 

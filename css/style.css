@@ -400,10 +400,18 @@ form input[type="color"] {
 #entry-table button {
   background: none;
   border: none;
-  color: var(--critical);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
+}
+
+#entry-table .edit-entry-btn {
+  color: var(--accent);
+  margin-right: 10px;
+}
+
+#entry-table .delete-entry-btn {
+  color: var(--critical);
 }
 
 /* ---- タブバー ---- */
