@@ -19,7 +19,8 @@
       wallCombinedYen: 1360000,
       deductionFlat: 650000,
       deductionCeiling: 1900000
-    }
+    },
+    updatedAt: 0
   };
 
   function uid() {
@@ -41,7 +42,9 @@
   }
 
   function saveData() {
+    state.updatedAt = Date.now();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    pushToCloud();
   }
 
   let state = loadData();
@@ -907,6 +910,128 @@
     renderEntryView();
     renderSettingsView();
   });
+
+  // ---------- クラウド同期（Firebase Auth + Firestore） ----------
+
+  const cloudEnabled = typeof firebase !== "undefined" && !!window.fbAuth && !!window.fbDb;
+
+  let currentUser = null;
+  let unsubscribeSnapshot = null;
+  let lastPushedUpdatedAt = 0;
+  let pushTimer = null;
+
+  function userDocRef(uid) {
+    return fbDb.collection("users").doc(uid);
+  }
+
+  function pushToCloud() {
+    if (!cloudEnabled || !currentUser) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => {
+      lastPushedUpdatedAt = state.updatedAt;
+      userDocRef(currentUser.uid).set(state).catch(err => {
+        console.error("クラウドへの保存に失敗しました", err);
+      });
+    }, 800);
+  }
+
+  function adoptRemoteState(remote) {
+    state = Object.assign(structuredClone(DEFAULT_DATA), remote, {
+      settings: Object.assign({}, DEFAULT_DATA.settings, remote.settings || {})
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    lastPushedUpdatedAt = state.updatedAt;
+    renderAll();
+    if (currentView === "entry") renderEntryView();
+    if (currentView === "settings") renderSettingsView();
+  }
+
+  function subscribeSnapshot(user) {
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+    unsubscribeSnapshot = userDocRef(user.uid).onSnapshot(snap => {
+      if (snap.metadata.hasPendingWrites || !snap.exists) return;
+      const remote = snap.data();
+      if ((remote.updatedAt || 0) === lastPushedUpdatedAt) return;
+      if ((remote.updatedAt || 0) > (state.updatedAt || 0)) adoptRemoteState(remote);
+    }, err => console.error("同期の監視に失敗しました", err));
+  }
+
+  function startCloudSync(user) {
+    currentUser = user;
+    updateSyncUI();
+    userDocRef(user.uid).get().then(snap => {
+      if (snap.exists) {
+        const remote = snap.data();
+        if ((remote.updatedAt || 0) > (state.updatedAt || 0)) {
+          adoptRemoteState(remote);
+        } else {
+          pushToCloud();
+        }
+      } else {
+        pushToCloud();
+      }
+      subscribeSnapshot(user);
+    }).catch(err => {
+      console.error("初回同期に失敗しました", err);
+      subscribeSnapshot(user);
+    });
+  }
+
+  function stopCloudSync() {
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+    unsubscribeSnapshot = null;
+    currentUser = null;
+    updateSyncUI();
+  }
+
+  function updateSyncUI() {
+    const authBtn = document.getElementById("auth-btn");
+    const settingsAuthBtn = document.getElementById("settings-auth-btn");
+    const accountInfo = document.getElementById("account-info");
+    const heroSync = document.getElementById("hero-sync");
+    if (!cloudEnabled) {
+      authBtn.classList.add("hidden");
+      settingsAuthBtn.classList.add("hidden");
+      accountInfo.textContent = "この端末ではクラウド同期を利用できません。";
+      heroSync.textContent = "";
+      return;
+    }
+    authBtn.classList.remove("hidden");
+    settingsAuthBtn.classList.remove("hidden");
+    if (currentUser) {
+      const label = currentUser.displayName || currentUser.email || "ログイン中";
+      authBtn.textContent = "☁ " + label;
+      settingsAuthBtn.textContent = "ログアウト";
+      accountInfo.textContent = `${currentUser.email} で同期しています。`;
+      heroSync.textContent = "☁ 同期中";
+    } else {
+      authBtn.textContent = "ログイン";
+      settingsAuthBtn.textContent = "Googleでログイン";
+      accountInfo.textContent = "ログインしていません（この端末だけに保存されます）。";
+      heroSync.textContent = "";
+    }
+  }
+
+  function toggleAuth() {
+    if (!cloudEnabled) return;
+    if (currentUser) {
+      fbAuth.signOut();
+    } else {
+      fbAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+    }
+  }
+
+  document.getElementById("auth-btn").addEventListener("click", toggleAuth);
+  document.getElementById("settings-auth-btn").addEventListener("click", toggleAuth);
+
+  if (cloudEnabled) {
+    fbAuth.getRedirectResult().catch(err => console.error("サインインに失敗しました", err));
+    fbAuth.onAuthStateChanged(user => {
+      if (user) startCloudSync(user); else stopCloudSync();
+    });
+  }
+
+  updateSyncUI();
 
   // ---------- 初期化 ----------
 
