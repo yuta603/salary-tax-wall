@@ -1032,6 +1032,7 @@
   function toggleAuth() {
     if (!cloudEnabled) return;
     if (currentUser) {
+      if (!confirm("ログアウトしますか？この端末はクラウドとの同期が止まり、ローカルの保存だけになります。")) return;
       fbAuth.signOut();
     } else {
       fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(err => {
