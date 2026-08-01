@@ -245,9 +245,16 @@
 
   function setupCanvas(canvas) {
     const dpr = window.devicePixelRatio || 1;
+    // canvas.height は再描画のたびにこの関数がdpr倍して書き換えてしまうため、
+    // 本来の高さ(HTML属性値)を初回だけキャプチャして使い回す。
+    // 毎回 canvas.height を基準にすると、再描画するたびに高さが dpr 倍ずつ
+    // 雪だるま式に増えていくバグになる。
+    if (!canvas.dataset.baseHeight) {
+      canvas.dataset.baseHeight = String(canvas.getAttribute("height") || canvas.height || 200);
+    }
+    const cssHeight = Number(canvas.dataset.baseHeight);
     const rect = canvas.getBoundingClientRect();
     const cssWidth = rect.width || canvas.parentElement.clientWidth;
-    const cssHeight = canvas.height;
     canvas.width = cssWidth * dpr;
     canvas.height = cssHeight * dpr;
     canvas.style.width = cssWidth + "px";
