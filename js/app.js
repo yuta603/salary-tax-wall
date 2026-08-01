@@ -197,6 +197,9 @@
     const container = document.getElementById("wall-rows");
     container.innerHTML = walls.map(w => {
       const barWidth = Math.min(100, w.currentRatio * 100);
+      const revenueLine = w.def.key === "salary"
+        ? `<div class="row-sub" style="margin-bottom:2px;">給与収入（控除前）${yen(summary.salaryRevenue)} － 給与所得控除 ${yen(state.settings.deductionFlat)} → 給与所得 ${yen(w.current)}</div>`
+        : "";
       return `
         <div class="wall-row">
           <div class="avatar" style="background:${w.def.tint};">${w.def.icon}</div>
@@ -205,6 +208,7 @@
               <span class="row-title">${w.def.label}</span>
               <span class="badge ${w.status}">${STATUS_LABEL[w.status]}</span>
             </div>
+            ${revenueLine}
             <div class="row-sub">${yen(w.current)} ／ ${yen(w.threshold)}（年末見込み ${yen(w.projected)}）</div>
             <div class="progress-track"><div class="progress-fill ${w.status}" style="width:${barWidth}%"></div></div>
           </div>
@@ -269,6 +273,104 @@
     ctx.fill();
   }
 
+  // ---------- チャートのツールチップ ----------
+
+  function tooltipEl() {
+    let el = document.getElementById("chart-tooltip");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "chart-tooltip";
+      el.className = "chart-tooltip hidden";
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  function showChartTooltip(clientX, clientY, title, rows) {
+    const el = tooltipEl();
+    el.innerHTML = "";
+    const titleEl = document.createElement("div");
+    titleEl.className = "chart-tooltip-title";
+    titleEl.textContent = title;
+    el.appendChild(titleEl);
+    rows.forEach(r => {
+      const row = document.createElement("div");
+      row.className = "chart-tooltip-row";
+      const key = document.createElement("span");
+      key.className = "chart-tooltip-key";
+      key.style.background = r.color;
+      const name = document.createElement("span");
+      name.className = "chart-tooltip-name";
+      name.textContent = r.name;
+      const val = document.createElement("span");
+      val.className = "chart-tooltip-value";
+      val.textContent = r.value;
+      row.appendChild(key);
+      row.appendChild(name);
+      row.appendChild(val);
+      el.appendChild(row);
+    });
+    el.classList.remove("hidden");
+    const pad = 14;
+    let left = clientX + pad;
+    let top = clientY + pad;
+    const rect = el.getBoundingClientRect();
+    if (left + rect.width > window.innerWidth - 8) left = clientX - rect.width - pad;
+    if (top + rect.height > window.innerHeight - 8) top = clientY - rect.height - pad;
+    el.style.left = Math.max(8, left) + "px";
+    el.style.top = Math.max(8, top) + "px";
+  }
+
+  let tooltipHideTimer = null;
+  function hideChartTooltip() {
+    tooltipEl().classList.add("hidden");
+  }
+  function scheduleHideChartTooltip(delay) {
+    clearTimeout(tooltipHideTimer);
+    tooltipHideTimer = setTimeout(hideChartTooltip, delay);
+  }
+
+  function attachChartTooltip(canvas, getLayout, buildContent) {
+    if (canvas._tooltipBound) return;
+    canvas._tooltipBound = true;
+
+    function handle(ev) {
+      const layout = getLayout();
+      if (!layout) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+      if (x < layout.padL - 10 || x > layout.padL + layout.chartW + 10 || y < 0 || y > layout.chartH + layout.padT + 20) {
+        hideChartTooltip();
+        return;
+      }
+      clearTimeout(tooltipHideTimer);
+      const content = buildContent(layout, x);
+      if (!content) { hideChartTooltip(); return; }
+      showChartTooltip(ev.clientX, ev.clientY, content.title, content.rows);
+    }
+
+    canvas.addEventListener("pointermove", handle);
+    canvas.addEventListener("pointerdown", handle);
+    canvas.addEventListener("pointerleave", (ev) => {
+      if (ev.pointerType === "touch") scheduleHideChartTooltip(2000);
+      else hideChartTooltip();
+    });
+    canvas.addEventListener("pointerup", (ev) => {
+      if (ev.pointerType === "touch") scheduleHideChartTooltip(2500);
+    });
+  }
+
+  function categoryIndexFromX(layout, x) {
+    let idx = Math.floor((x - layout.padL) / layout.barSlot);
+    return Math.max(0, Math.min(layout.categories.length - 1, idx));
+  }
+
+  function nearestIndexFromX(layout, x) {
+    const idx = Math.round((x - layout.padL) / layout.xStep);
+    return Math.max(0, Math.min(layout.categories.length - 1, idx));
+  }
+
   function niceMax(value) {
     if (value <= 0) return 100000;
     const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
@@ -281,7 +383,7 @@
     return niceResidual * magnitude;
   }
 
-  function drawStackedBarChart(canvas, categories, series, colors) {
+  function drawStackedBarChart(canvas, categories, series) {
     const { ctx, width, height } = setupCanvas(canvas);
     ctx.clearRect(0, 0, width, height);
     const padL = 56, padR = 12, padT = 10, padB = 24;
@@ -322,7 +424,7 @@
         const isTop = segIndex === visible - 1;
         const h = Math.max(0, (v / max) * chartH - (visible > 1 ? segGap : 0));
         const y = padT + chartH - yOffset - h;
-        ctx.fillStyle = colors[si];
+        ctx.fillStyle = s.color;
         if (isTop) {
           fillRoundedTopRect(ctx, x, y, barWidth, h, 4);
         } else {
@@ -333,6 +435,17 @@
       });
       ctx.fillStyle = textColor;
       ctx.fillText(cat, x + barWidth / 2, padT + chartH + 14);
+    });
+
+    canvas._layout = { padL, padT, chartW, chartH, barSlot, categories, series };
+    attachChartTooltip(canvas, () => canvas._layout, (layout, x) => {
+      const idx = categoryIndexFromX(layout, x);
+      const rows = layout.series
+        .map(s => ({ name: s.name, color: s.color, value: yen(s.data[idx]) }))
+        .filter((r, i) => layout.series[i].data[idx] !== 0 || layout.series.length <= 4);
+      const total = layout.series.reduce((sum, s) => sum + s.data[idx], 0);
+      if (layout.series.length > 1) rows.push({ name: "合計", color: "transparent", value: yen(total) });
+      return { title: layout.categories[idx], rows };
     });
   }
 
@@ -400,6 +513,13 @@
       const x = padL + xStep * i;
       ctx.fillText(cat, x, padT + chartH + 14);
     });
+
+    canvas._layout = { padL, padT, chartW, chartH, xStep, categories, lines };
+    attachChartTooltip(canvas, () => canvas._layout, (layout, x) => {
+      const idx = nearestIndexFromX(layout, x);
+      const rows = layout.lines.map(l => ({ name: l.name, color: l.color, value: yen(l.data[idx]) }));
+      return { title: layout.categories[idx], rows };
+    });
   }
 
   function drawGroupedBarChart(canvas, categories, seriesA, seriesB, labelA, labelB, colorA, colorB) {
@@ -451,6 +571,18 @@
     ctx.fillRect(padL + 70, legendY, 8, 8);
     ctx.fillStyle = textColor;
     ctx.fillText(labelB, padL + 82, legendY + 8);
+
+    canvas._layout = { padL, padT, chartW, chartH, barSlot, categories };
+    attachChartTooltip(canvas, () => canvas._layout, (layout, x) => {
+      const idx = categoryIndexFromX(layout, x);
+      return {
+        title: layout.categories[idx],
+        rows: [
+          { name: labelA, color: colorA, value: yen(seriesA[idx]) },
+          { name: labelB, color: colorB, value: yen(seriesB[idx]) }
+        ]
+      };
+    });
   }
 
   // ---------- ダッシュボード描画 ----------
@@ -461,9 +593,8 @@
     renderWallRows(summary);
 
     const monthly = monthlyTotalsBySource(currentYear);
-    const series = state.sources.map(s => ({ data: monthly[s.id] }));
-    const colors = state.sources.map(s => s.color);
-    drawStackedBarChart(document.getElementById("chart-monthly"), MONTH_NAMES, series, colors);
+    const series = state.sources.map(s => ({ data: monthly[s.id], name: s.name || "(未設定)", color: s.color }));
+    drawStackedBarChart(document.getElementById("chart-monthly"), MONTH_NAMES, series);
 
     const legend = document.getElementById("legend-monthly");
     legend.innerHTML = state.sources.map(s =>
@@ -477,9 +608,9 @@
       document.getElementById("chart-cumulative"),
       MONTH_NAMES,
       [
-        { data: summary.salaryIncomeCumSeries, color: PALETTE[0] },
-        { data: summary.miscIncomeCumSeries, color: PALETTE[1] },
-        { data: summary.combinedCumSeries, color: PALETTE[6] }
+        { data: summary.salaryIncomeCumSeries, color: PALETTE[0], name: "給与所得（累計）" },
+        { data: summary.miscIncomeCumSeries, color: PALETTE[1], name: "雑所得（累計）" },
+        { data: summary.combinedCumSeries, color: PALETTE[6], name: "合計所得（累計）" }
       ],
       [
         { value: state.settings.wallSalaryIncomeYen, color: PALETTE[0], label: "給与所得の壁" },
