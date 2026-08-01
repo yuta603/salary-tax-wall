@@ -928,8 +928,25 @@
     if (!cloudEnabled || !currentUser) return;
     clearTimeout(pushTimer);
     pushTimer = setTimeout(() => {
-      lastPushedUpdatedAt = state.updatedAt;
-      userDocRef(currentUser.uid).set(state).catch(err => {
+      const uid = currentUser.uid;
+      const ref = userDocRef(uid);
+      const localSnapshot = state;
+      // 書き込む直前にサーバー側の最新値を読み直し、こちらの方が新しい場合だけ上書きする
+      // （2端末がほぼ同時に初回ログインした場合の上書き競合を防ぐ）
+      fbDb.runTransaction(tx => tx.get(ref).then(doc => {
+        const remote = doc.exists ? doc.data() : null;
+        if (remote && (remote.updatedAt || 0) > (localSnapshot.updatedAt || 0)) {
+          return { skipped: true, remote };
+        }
+        tx.set(ref, localSnapshot);
+        return { skipped: false };
+      })).then(result => {
+        if (result.skipped) {
+          if ((result.remote.updatedAt || 0) > (state.updatedAt || 0)) adoptRemoteState(result.remote);
+        } else {
+          lastPushedUpdatedAt = localSnapshot.updatedAt;
+        }
+      }).catch(err => {
         console.error("クラウドへの保存に失敗しました", err);
       });
     }, 800);
