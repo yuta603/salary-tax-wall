@@ -1,4 +1,4 @@
-const CACHE_NAME = "zeikin-kabe-v10";
+const CACHE_NAME = "zeikin-kabe-v11";
 const PRECACHE_URLS = [
   "./",
   "./index.html",
@@ -28,18 +28,17 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  // ネットワーク優先: オンラインなら常に最新版を取得する。オフライン時だけキャッシュにフォールバック。
+  // （キャッシュ優先だと、更新をデプロイしても端末側が古い版を握り続けてしまい紛らわしいため）
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
